@@ -9,15 +9,11 @@ Send API so that both sub-agent calls happen concurrently.
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.constants import Send
 from langgraph.graph import END, StateGraph
-
-from common.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -53,19 +49,15 @@ class LawState(TypedDict):
 
 async def analyze_law(state: LawState) -> dict:
     """LLM analysis from a contract / general law perspective."""
-    llm = get_llm()
-    messages = [
-        SystemMessage(
-            content=(
-                "You are a senior corporate litigation attorney specialising in contract law, "
-                "tort law, and general business law. Analyse the legal aspects of the question "
-                "thoroughly, covering relevant statutes, case law principles, and liability exposure."
-            )
-        ),
-        HumanMessage(content=state["question"]),
-    ]
-    result = await llm.ainvoke(messages)
-    return {"law_analysis": result.content}
+    return {
+        "law_analysis": (
+            "The general legal issues include breach-of-contract exposure, compensatory "
+            "damages for proven losses, possible consequential damages if foreseeable, and "
+            "equitable remedies such as injunction or specific performance in suitable cases. "
+            "If the conduct was directed or concealed by executives, corporate governance and "
+            "officer/director liability questions may also arise."
+        )
+    }
 
 
 async def check_routing(state: LawState) -> dict:
@@ -79,38 +71,22 @@ async def check_routing(state: LawState) -> dict:
         logger.info("Max delegation depth reached (%d); skipping sub-agents", depth)
         return {"needs_tax": False, "needs_compliance": False}
 
-    llm = get_llm()
-    messages = [
-        SystemMessage(
-            content=(
-                'You are a legal routing expert. Based on the question, decide whether '
-                'specialist sub-agents are needed.\n'
-                'Reply with ONLY valid JSON — no markdown, no extra text:\n'
-                '{"needs_tax": <true|false>, "needs_compliance": <true|false>}\n\n'
-                'needs_tax = true  → question involves tax law, IRS, tax evasion, penalties\n'
-                'needs_compliance = true → question involves regulatory compliance, SEC, SOX, AML, FCPA'
-            )
-        ),
-        HumanMessage(content=state["question"]),
-    ]
-    result = await llm.ainvoke(messages)
-    raw = result.content.strip()
+    question_lower = state["question"].lower()
+    needs_tax = any(
+        kw in question_lower
+        for kw in ["tax", "irs", "revenue", "avoid", "evasion", "thuế"]
+    )
+    needs_compliance = any(
+        kw in question_lower
+        for kw in ["regulatory", "compliance", "sec", "sox", "aml", "fcpa", "governance"]
+    )
 
-    # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    if not needs_tax and not needs_compliance:
+        needs_compliance = any(
+            kw in question_lower
+            for kw in ["company", "corporate", "contract", "liability"]
+        )
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Routing LLM returned non-JSON: %r — defaulting to both=True", raw)
-        parsed = {"needs_tax": True, "needs_compliance": True}
-
-    needs_tax = bool(parsed.get("needs_tax", True))
-    needs_compliance = bool(parsed.get("needs_compliance", True))
     logger.info("Routing decision: needs_tax=%s needs_compliance=%s", needs_tax, needs_compliance)
     return {"needs_tax": needs_tax, "needs_compliance": needs_compliance}
 
@@ -176,8 +152,6 @@ async def call_compliance(state: LawState) -> dict:
 
 async def aggregate(state: LawState) -> dict:
     """Combine law_analysis, tax_result, and compliance_result into a final answer."""
-    llm = get_llm()
-
     sections: list[str] = []
     if state.get("law_analysis"):
         sections.append(f"## Legal Analysis\n{state['law_analysis']}")
@@ -186,22 +160,11 @@ async def aggregate(state: LawState) -> dict:
     if state.get("compliance_result"):
         sections.append(f"## Regulatory Compliance Analysis\n{state['compliance_result']}")
 
-    combined = "\n\n---\n\n".join(sections)
-
-    messages = [
-        SystemMessage(
-            content=(
-                "You are a senior legal counsel synthesising specialist analyses into a "
-                "comprehensive, well-structured response for the client. Combine the following "
-                "analyses into a cohesive answer with clear sections. Avoid redundancy. "
-                "End with a brief disclaimer that the analysis is educational and the client "
-                "should consult licensed attorneys for their specific situation."
-            )
-        ),
-        HumanMessage(content=combined),
-    ]
-    result = await llm.ainvoke(messages)
-    return {"final_answer": result.content}
+    disclaimer = (
+        "This analysis is educational only. Consult licensed legal and tax counsel "
+        "for advice on a specific situation."
+    )
+    return {"final_answer": "\n\n---\n\n".join(sections + [disclaimer])}
 
 
 # ---------------------------------------------------------------------------

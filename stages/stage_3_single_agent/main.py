@@ -7,16 +7,15 @@ the results, and may call more tools before giving a final answer.
 Uses LangGraph's create_react_agent for the Think -> Act -> Observe loop.
 """
 
+from common.llm import get_llm
+from langchain_core.tools import tool
+from dotenv import load_dotenv
 import asyncio
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from dotenv import load_dotenv
-from langchain_core.tools import tool
-
-from common.llm import get_llm
 
 # ---------------------------------------------------------------------------
 # Expanded knowledge base (law + tax + compliance entries)
@@ -162,7 +161,8 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     }
 
     industry_lower = industry.lower()
-    applicable = frameworks.get(industry_lower, ["FTC Act Section 5", "State consumer protection laws"])
+    applicable = frameworks.get(
+        industry_lower, ["FTC Act Section 5", "State consumer protection laws"])
     size_note = size_extras.get(company_size.lower(), "")
 
     return (
@@ -172,7 +172,8 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     )
 
 
-TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements]
+TOOLS = [search_legal_database, calculate_penalty,
+         check_compliance_requirements]
 
 QUESTION = (
     "A tech startup with $5M revenue was caught sharing user data without consent "
@@ -223,7 +224,8 @@ async def main():
                 elif msg.type == "tool":
                     print(f"\n[Step {step}] OBSERVE (node: {node_name})")
                     content = msg.content
-                    print(f"  Result: {content[:300]}{'...' if len(content) > 300 else ''}")
+                    print(
+                        f"  Result: {content[:300]}{'...' if len(content) > 300 else ''}")
                 elif msg.type == "ai" and msg.content:
                     print(f"\n[Step {step}] FINAL ANSWER (node: {node_name})")
                     print("-" * 70)

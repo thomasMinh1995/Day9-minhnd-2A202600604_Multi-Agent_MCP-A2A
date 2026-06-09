@@ -111,11 +111,21 @@ def _extract_text(response: object) -> str:
         for part in parts:
             text += _part_text(part)
 
+    # Failed/cancelled tasks often put the useful message in status.message.
+    if not text:
+        status = getattr(result, "status", None)
+        status_message = getattr(status, "message", None)
+        if status_message:
+            for part in getattr(status_message, "parts", []) or []:
+                text += _part_text(part)
+
     # Task history messages as fallback
     if not text:
         history = getattr(result, "history", None)
         if history:
             for msg in history:
+                if str(getattr(msg, "role", "")).lower().endswith("user"):
+                    continue
                 msg_parts = getattr(msg, "parts", []) or []
                 for part in msg_parts:
                     text += _part_text(part)

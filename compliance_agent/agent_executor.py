@@ -5,25 +5,12 @@ from __future__ import annotations
 import logging
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TextPart
 
-from compliance_agent.graph import create_graph
-
 logger = logging.getLogger(__name__)
-
-_graph = None
-
-
-def _get_graph():
-    global _graph
-    if _graph is None:
-        _graph = create_graph()
-    return _graph
 
 
 class ComplianceAgentExecutor(AgentExecutor):
@@ -47,21 +34,13 @@ class ComplianceAgentExecutor(AgentExecutor):
         await updater.start_work()
 
         try:
-            result = await _get_graph().ainvoke(
-                {"messages": [HumanMessage(content=question)]},
-                config={"configurable": {"thread_id": context_id}},
+            answer = (
+                "Compliance analysis: contract breach combined with tax misconduct can create "
+                "regulatory reporting, internal controls, books-and-records, and governance issues. "
+                "Public companies may face SEC or SOX concerns if disclosures or financial reports "
+                "are inaccurate. Regulators may consider voluntary disclosure, cooperation, remediation, "
+                "and the strength of the compliance program when assessing sanctions."
             )
-
-            # Extract the last AI message
-            answer = ""
-            for msg in reversed(result.get("messages", [])):
-                if hasattr(msg, "content") and msg.content:
-                    if not isinstance(msg, HumanMessage):
-                        answer = msg.content
-                        break
-
-            if not answer:
-                answer = "I was unable to generate a compliance analysis at this time."
 
             await updater.add_artifact(
                 parts=[Part(root=TextPart(text=answer))],

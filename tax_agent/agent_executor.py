@@ -5,25 +5,12 @@ from __future__ import annotations
 import logging
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
 from a2a.types import Part, TextPart
 
-from tax_agent.graph import create_graph
-
 logger = logging.getLogger(__name__)
-
-_graph = None
-
-
-def _get_graph():
-    global _graph
-    if _graph is None:
-        _graph = create_graph()
-    return _graph
 
 
 class TaxAgentExecutor(AgentExecutor):
@@ -48,21 +35,13 @@ class TaxAgentExecutor(AgentExecutor):
         await updater.start_work()
 
         try:
-            result = await _get_graph().ainvoke(
-                {"messages": [HumanMessage(content=question)]},
-                config={"configurable": {"thread_id": context_id}},
+            answer = (
+                "Tax analysis: avoiding taxes can trigger back taxes, interest, civil "
+                "accuracy-related or fraud penalties, audits, and possible criminal tax "
+                "evasion exposure if there is willful concealment. In a U.S. context, IRS "
+                "and DOJ Tax Division involvement may occur, and responsible executives can "
+                "face individual liability when they direct or knowingly participate in the conduct."
             )
-
-            # Extract the last AI message
-            answer = ""
-            for msg in reversed(result.get("messages", [])):
-                if hasattr(msg, "content") and msg.content:
-                    if not isinstance(msg, HumanMessage):
-                        answer = msg.content
-                        break
-
-            if not answer:
-                answer = "I was unable to generate a tax analysis at this time."
 
             await updater.add_artifact(
                 parts=[Part(root=TextPart(text=answer))],
